@@ -20,6 +20,82 @@ def test_settings_load_with_defaults(monkeypatch):
     assert settings.ocr_enabled is True
 
 
+def test_settings_load_reads_dotenv_file(tmp_path, monkeypatch):
+    """Regression test: .env must actually be parsed into the process, not
+    just exist as a template. Caught in the wild when OLLAMA_TEXT_MODEL and
+    OLLAMA_VISION_MODEL from .env silently had no effect."""
+    for key in ("OLLAMA_TEXT_MODEL", "OLLAMA_VISION_MODEL", "MAX_UPLOAD_MB"):
+        monkeypatch.delenv(key, raising=False)
+
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "OLLAMA_TEXT_MODEL=llama3.1:8b-instruct-q4_K_M\n"
+        "OLLAMA_VISION_MODEL=llava:latest\n"
+        "# a comment line, ignored\n"
+        "\n"
+        "MAX_UPLOAD_MB=25\n"
+    )
+
+    settings = Settings.load(env_path=env_file)
+    assert settings.ollama_text_model == "llama3.1:8b-instruct-q4_K_M"
+    assert settings.ollama_vision_model == "llava:latest"
+    assert settings.max_upload_mb == 25
+
+
+def test_real_env_var_overrides_dotenv_file(tmp_path, monkeypatch):
+    """A real environment variable must win over a conflicting .env value."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("MAX_UPLOAD_MB=25\n")
+    monkeypatch.setenv("MAX_UPLOAD_MB", "99")
+
+    settings = Settings.load(env_path=env_file)
+    assert settings.max_upload_mb == 99
+
+
+def test_missing_dotenv_file_does_not_crash(tmp_path, monkeypatch):
+    monkeypatch.delenv("MAX_UPLOAD_MB", raising=False)
+    settings = Settings.load(env_path=tmp_path / "does_not_exist.env")
+    assert settings.max_upload_mb == 50  # falls back to default cleanly
+
+
+def test_settings_load_reads_dotenv_file(tmp_path, monkeypatch):
+    """Regression test: .env must actually be parsed into the process, not
+    just exist as a template. Caught in the wild when OLLAMA_TEXT_MODEL and
+    OLLAMA_VISION_MODEL from .env silently had no effect."""
+    for key in ("OLLAMA_TEXT_MODEL", "OLLAMA_VISION_MODEL", "MAX_UPLOAD_MB"):
+        monkeypatch.delenv(key, raising=False)
+
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "OLLAMA_TEXT_MODEL=llama3.1:8b-instruct-q4_K_M\n"
+        "OLLAMA_VISION_MODEL=llava:latest\n"
+        "# a comment line, ignored\n"
+        "\n"
+        "MAX_UPLOAD_MB=25\n"
+    )
+
+    settings = Settings.load(env_path=env_file)
+    assert settings.ollama_text_model == "llama3.1:8b-instruct-q4_K_M"
+    assert settings.ollama_vision_model == "llava:latest"
+    assert settings.max_upload_mb == 25
+
+
+def test_real_env_var_overrides_dotenv_file(tmp_path, monkeypatch):
+    """A real environment variable must win over a conflicting .env value."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("MAX_UPLOAD_MB=25\n")
+    monkeypatch.setenv("MAX_UPLOAD_MB", "99")
+
+    settings = Settings.load(env_path=env_file)
+    assert settings.max_upload_mb == 99
+
+
+def test_missing_dotenv_file_does_not_crash(tmp_path, monkeypatch):
+    monkeypatch.delenv("MAX_UPLOAD_MB", raising=False)
+    settings = Settings.load(env_path=tmp_path / "does_not_exist.env")
+    assert settings.max_upload_mb == 50  # falls back to default cleanly
+
+
 def test_settings_respect_env_overrides(monkeypatch, tmp_path):
     monkeypatch.setenv("NINJAREPORT_DATA_DIR", str(tmp_path / "custom"))
     monkeypatch.setenv("MAX_UPLOAD_MB", "10")

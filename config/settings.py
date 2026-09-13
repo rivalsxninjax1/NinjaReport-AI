@@ -2,6 +2,10 @@
 
 Phase 0: no AI/OCR logic here — just paths, limits, and feature flags.
 Everything has a safe default so the app can boot with zero configuration.
+
+Loads .env (if present at the project root) into the process environment
+before reading anything, via a minimal stdlib parser — no python-dotenv
+dependency needed for a handful of KEY=VALUE lines.
 """
 from __future__ import annotations
 
@@ -9,6 +13,30 @@ import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _load_dotenv(env_path: Path | None = None) -> None:
+    """Parse a .env file and set values into os.environ.
+
+    Uses setdefault so real environment variables (e.g. set by a shell
+    export or a container) always take precedence over .env — matching
+    standard dotenv-loading behavior.
+    """
+    path = env_path or (_PROJECT_ROOT / ".env")
+    if not path.exists():
+        return
+
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key:
+            os.environ.setdefault(key, value)
 
 
 def _default_data_dir() -> Path:
@@ -46,7 +74,9 @@ class Settings:
     pdf_export_enabled: bool = True
 
     @classmethod
-    def load(cls) -> "Settings":
+    def load(cls, env_path: Path | None = None) -> "Settings":
+        _load_dotenv(env_path)
+
         data_dir_env = os.environ.get("NINJAREPORT_DATA_DIR")
         data_dir = Path(data_dir_env).expanduser() if data_dir_env else _default_data_dir()
 

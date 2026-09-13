@@ -61,6 +61,18 @@ CREATE TABLE IF NOT EXISTS derived_artifacts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_derived_evidence ON derived_artifacts(project_id, evidence_id);
+
+-- AI analysis cache, keyed on file hash + model + prompt version so identical
+-- evidence is never re-analyzed unnecessarily. Phase 3.
+CREATE TABLE IF NOT EXISTS ai_cache (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_hash TEXT NOT NULL,
+    model TEXT NOT NULL,
+    prompt_version TEXT NOT NULL,
+    response TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(file_hash, model, prompt_version)
+);
 """
 
 
