@@ -1,0 +1,30 @@
+# Environments
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Secrets and local config
+.env
+*.env.local
+
+# App data (evidence, DB, logs, exports) — never commit real evidence
+data/
+!data/.gitkeep
+*.sqlite3
+*.log
+
+# OS/editor cruft
+.DS_Store
+.idea/
+.vscode/
+
+# Test/coverage artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Packaging
+build/
+dist/
+*.egg-info/

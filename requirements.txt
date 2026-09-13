@@ -1,0 +1,9 @@
+streamlit>=1.38
+pydantic>=2.7
+pillow>=10.4
+pymupdf>=1.24
+python-docx>=1.1
+reportlab>=4.2
+pytesseract>=0.3.10
+pytest>=8.3
+ruff>=0.6
