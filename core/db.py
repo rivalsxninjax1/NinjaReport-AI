@@ -43,6 +43,24 @@ CREATE TABLE IF NOT EXISTS evidence (
 );
 
 CREATE INDEX IF NOT EXISTS idx_evidence_project ON evidence(project_id);
+
+-- Derived artifacts: previews, OCR text, PDF page text. Always separate from
+-- the immutable original stored in `evidence`. Phase 2.
+CREATE TABLE IF NOT EXISTS derived_artifacts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id TEXT NOT NULL,
+    evidence_id TEXT NOT NULL,
+    artifact_type TEXT NOT NULL,  -- 'preview' | 'ocr_text' | 'pdf_page_text'
+    page_number INTEGER,          -- NULL for non-paged artifacts (e.g. image OCR)
+    content_path TEXT,            -- path to derived file, e.g. a preview image
+    text_content TEXT,            -- extracted/OCR'd text, if applicable
+    engine TEXT NOT NULL,         -- 'pillow' | 'tesseract' | 'pymupdf' | 'unavailable'
+    confidence REAL,              -- 0.0-1.0, NULL when not applicable/unavailable
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (project_id, evidence_id) REFERENCES evidence(project_id, id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_derived_evidence ON derived_artifacts(project_id, evidence_id);
 """
 
 
