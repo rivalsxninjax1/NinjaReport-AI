@@ -113,7 +113,69 @@ CREATE TABLE IF NOT EXISTS relationships (
 
 CREATE INDEX IF NOT EXISTS idx_relationships_from ON relationships(project_id, from_type, from_id);
 CREATE INDEX IF NOT EXISTS idx_relationships_to ON relationships(project_id, to_type, to_id);
+
+-- Findings. Note: `severity` is only ever set by FindingsStore.approve_severity()
+-- (a human action) — ai_suggested_severity is purely advisory storage.
+-- `cvss_vector` is free-text and human-edited; nothing computes it. Phase 6.
+CREATE TABLE IF NOT EXISTS findings (
+    rowid_pk INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT NOT NULL,
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    title TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open',
+    affected_asset TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    technical_impact TEXT NOT NULL DEFAULT '',
+    business_impact TEXT NOT NULL DEFAULT '',
+    reproduction_steps TEXT NOT NULL DEFAULT '[]',
+    evidence_ids TEXT NOT NULL DEFAULT '[]',
+    remediation TEXT NOT NULL DEFAULT '',
+    references_list TEXT NOT NULL DEFAULT '[]',
+    verification_notes TEXT NOT NULL DEFAULT '',
+    severity TEXT,                  -- NULL until a human approves one
+    severity_source TEXT,           -- 'human_approved' once severity is set
+    ai_suggested_severity TEXT,     -- advisory only; never the effective severity
+    ai_severity_rationale TEXT,
+    cvss_vector TEXT,               -- free-text, human-entered/edited only
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(project_id, id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_findings_project ON findings(project_id);
+
+-- Attack path nodes across the fixed 8-stage kill chain. `status` is always
+-- computed (verified iff evidence_ids is non-empty) — there is no code path
+-- that lets a node be marked verified without evidence. Phase 6.
+CREATE TABLE IF NOT EXISTS attack_path_nodes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    stage TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    evidence_ids TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'unverified',
+    order_index INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_attack_path_project ON attack_path_nodes(project_id);
 """
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Guarded schema evolution for columns added to already-existing tables.
+
+    `CREATE TABLE IF NOT EXISTS` is a no-op once a table exists — it will
+    NOT add new columns to a database created by an earlier phase. Any
+    phase that adds a column to `projects`, `evidence`, etc. must add a
+    guarded ALTER TABLE here instead, checked against PRAGMA table_info so
+    it's safe to run on every startup.
+    """
+    project_columns = {row["name"] for row in conn.execute("PRAGMA table_info(projects)").fetchall()}
+    if "next_finding_seq" not in project_columns:
+        conn.execute("ALTER TABLE projects ADD COLUMN next_finding_seq INTEGER NOT NULL DEFAULT 1")
 
 
 def get_connection(db_path: Path) -> sqlite3.Connection:
@@ -126,3 +188,4 @@ def get_connection(db_path: Path) -> sqlite3.Connection:
 
 def init_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    _migrate(conn)

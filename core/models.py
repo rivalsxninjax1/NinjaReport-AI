@@ -22,12 +22,44 @@ class SourceType(str, Enum):
     OTHER = "other"
 
 
+class Severity(str, Enum):
+    INFORMATIONAL = "informational"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class FindingStatus(str, Enum):
+    OPEN = "open"
+    IN_REVIEW = "in_review"
+    REMEDIATED = "remediated"
+    ACCEPTED_RISK = "accepted_risk"
+    FALSE_POSITIVE = "false_positive"
+
+
+class AttackStage(str, Enum):
+    RECON = "recon"
+    PORT_DISCOVERY = "port_discovery"
+    SERVICE_ENUMERATION = "service_enumeration"
+    WEB_ENUMERATION = "web_enumeration"
+    VULNERABILITY_DISCOVERY = "vulnerability_discovery"
+    INITIAL_ACCESS = "initial_access"
+    PRIVILEGE_ESCALATION = "privilege_escalation"
+    OBJECTIVE_FLAG = "objective_flag"
+
+
+# Fixed kill-chain order — attack path nodes sort by this, not creation time.
+ATTACK_STAGE_ORDER = [s.value for s in AttackStage]
+
+
 @dataclass
 class Project:
     id: str
     name: str
     created_at: str
     next_evidence_seq: int = 1
+    next_finding_seq: int = 1
 
 
 @dataclass
@@ -52,3 +84,41 @@ class Evidence:
     ai_analysis: str | None = None
     manual_notes: str = ""
     verification_status: str = VerificationStatus.UNVERIFIED.value
+
+
+@dataclass
+class Finding:
+    id: str  # e.g. "FIND-001", unique within its project
+    project_id: str
+    title: str
+    created_at: str
+    updated_at: str
+    status: str = FindingStatus.OPEN.value
+    affected_asset: str = ""
+    description: str = ""
+    technical_impact: str = ""
+    business_impact: str = ""
+    reproduction_steps: list[str] = field(default_factory=list)
+    evidence_ids: list[str] = field(default_factory=list)
+    remediation: str = ""
+    references_list: list[str] = field(default_factory=list)
+    verification_notes: str = ""
+    severity: str | None = None              # set only via FindingsStore.approve_severity
+    severity_source: str | None = None       # 'human_approved' once severity is set
+    ai_suggested_severity: str | None = None  # advisory only
+    ai_severity_rationale: str | None = None
+    cvss_vector: str | None = None           # free-text, human-edited only
+
+
+@dataclass
+class AttackPathNode:
+    id: int
+    project_id: str
+    stage: str
+    title: str
+    created_at: str
+    updated_at: str
+    description: str = ""
+    evidence_ids: list[str] = field(default_factory=list)
+    status: str = VerificationStatus.UNVERIFIED.value  # always computed, never set directly
+    order_index: int = 0
