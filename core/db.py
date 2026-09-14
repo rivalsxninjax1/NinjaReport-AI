@@ -73,6 +73,46 @@ CREATE TABLE IF NOT EXISTS ai_cache (
     created_at TEXT NOT NULL,
     UNIQUE(file_hash, model, prompt_version)
 );
+
+-- Smart-crop suggestions. Never modify the original evidence file; an
+-- accepted suggestion produces a separate derived cropped image. Phase 5.
+CREATE TABLE IF NOT EXISTS crop_suggestions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id TEXT NOT NULL,
+    evidence_id TEXT NOT NULL,  -- parent evidence this crop is derived from
+    x1 INTEGER NOT NULL,
+    y1 INTEGER NOT NULL,
+    x2 INTEGER NOT NULL,
+    y2 INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    confidence REAL NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',  -- pending | accepted | rejected | adjusted
+    derived_path TEXT,       -- set once accepted/adjusted and a crop file is generated
+    created_at TEXT NOT NULL,
+    decided_at TEXT,
+    FOREIGN KEY (project_id, evidence_id) REFERENCES evidence(project_id, id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_crop_suggestions_evidence ON crop_suggestions(project_id, evidence_id);
+
+-- Generic relationship graph: evidence <-> hosts, services, tools, commands,
+-- other evidence, report sections (added freely later — relation_type and
+-- entity types are just strings, no schema migration needed to add kinds).
+-- Phase 5.
+CREATE TABLE IF NOT EXISTS relationships (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id TEXT NOT NULL,
+    from_type TEXT NOT NULL,
+    from_id TEXT NOT NULL,
+    to_type TEXT NOT NULL,
+    to_id TEXT NOT NULL,
+    relation_type TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(project_id, from_type, from_id, to_type, to_id, relation_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_relationships_from ON relationships(project_id, from_type, from_id);
+CREATE INDEX IF NOT EXISTS idx_relationships_to ON relationships(project_id, to_type, to_id);
 """
 
 
