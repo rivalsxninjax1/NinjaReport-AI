@@ -161,6 +161,44 @@ CREATE TABLE IF NOT EXISTS attack_path_nodes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_attack_path_project ON attack_path_nodes(project_id);
+
+-- Report builder: one active plan per project, bootstrapped from a CTF or
+-- VAPT template's section list. Sections and items are reorderable and
+-- individually includable/excludable. No AI writing happens here — that's
+-- Phase 8; this is purely the structured plan. Phase 7.
+CREATE TABLE IF NOT EXISTS report_plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id TEXT NOT NULL UNIQUE REFERENCES projects(id),
+    template_type TEXT NOT NULL,  -- 'ctf' | 'vapt'
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS report_sections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_plan_id INTEGER NOT NULL REFERENCES report_plans(id),
+    title TEXT NOT NULL,
+    order_index INTEGER NOT NULL,
+    included INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_report_sections_plan ON report_sections(report_plan_id);
+
+CREATE TABLE IF NOT EXISTS report_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_section_id INTEGER NOT NULL REFERENCES report_sections(id),
+    item_type TEXT NOT NULL,  -- 'evidence' | 'finding' | 'text'
+    evidence_id TEXT,         -- set when item_type = 'evidence'
+    finding_id TEXT,          -- set when item_type = 'finding'
+    text_content TEXT,        -- set when item_type = 'text'
+    caption TEXT NOT NULL DEFAULT '',
+    order_index INTEGER NOT NULL,
+    included INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_report_items_section ON report_items(report_section_id);
 """
 
 
