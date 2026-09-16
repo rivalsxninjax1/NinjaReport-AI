@@ -161,3 +161,46 @@ def test_gitignore_excludes_data_and_env():
     gitignore = (PROJECT_ROOT / ".gitignore").read_text()
     assert ".env" in gitignore
     assert "data/" in gitignore or "/data/" in gitignore
+
+
+def test_connection_usable_from_a_different_thread_than_it_was_created_on(tmp_path):
+    """Regression test for a real bug: Streamlit's st.cache_resource keeps
+    one connection alive and reuses it across the worker threads it assigns
+    to different page renders. sqlite3 refuses cross-thread use by default
+    (check_same_thread=True), which crashed every page. get_connection()
+    must pass check_same_thread=False."""
+    import threading
+
+    from core.db import get_connection, init_schema
+    from core.evidence_store import EvidenceStore
+
+    db_path = tmp_path / "db" / "thread_test.sqlite3"
+    result = {}
+    errors = []
+
+    def create_on_thread_a():
+        conn = get_connection(db_path)
+        init_schema(conn)
+        store = EvidenceStore(conn, evidence_root=tmp_path / "evidence")
+        store.create_project("Thread Test")
+        result["conn"] = conn
+        result["store"] = store
+
+    thread_a = threading.Thread(target=create_on_thread_a)
+    thread_a.start()
+    thread_a.join()
+
+    def use_on_thread_b():
+        try:
+            projects = result["store"].list_projects()
+            assert len(projects) == 1
+            assert projects[0].name == "Thread Test"
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    thread_b = threading.Thread(target=use_on_thread_b)
+    thread_b.start()
+    thread_b.join()
+
+    result["conn"].close()
+    assert not errors, f"cross-thread access failed: {errors}"

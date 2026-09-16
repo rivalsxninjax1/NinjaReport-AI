@@ -218,7 +218,16 @@ def _migrate(conn: sqlite3.Connection) -> None:
 
 def get_connection(db_path: Path) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path, isolation_level=None)  # autocommit; we manage txns explicitly
+    # check_same_thread=False: NinjaReport AI is a local single-user desktop
+    # tool, but Streamlit's st.cache_resource keeps ONE connection object
+    # alive and reuses it across the worker threads it assigns to each page
+    # render — by default sqlite3 refuses to touch a connection from any
+    # thread other than the one that created it, which crashed every page.
+    # SQLite's underlying library is compiled thread-safe ("serialized"
+    # mode) in the Python builds this project targets, so sharing one
+    # connection across threads is safe for a single local user; this is
+    # the standard, documented fix for Streamlit + sqlite3.
+    conn = sqlite3.connect(db_path, isolation_level=None, check_same_thread=False)
     conn.execute("PRAGMA foreign_keys = ON;")
     conn.row_factory = sqlite3.Row
     return conn
