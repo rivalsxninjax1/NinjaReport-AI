@@ -74,6 +74,12 @@ def compile_report(
                         f"Report plan references evidence {item.evidence_id} which no "
                         f"longer exists in project {plan.project_id}."
                     )
+                if not evidence_store.verify_integrity(plan.project_id, evidence.id):
+                    raise ReportCompilationError(
+                        f"Evidence {evidence.id} failed hash verification — the stored file "
+                        f"no longer matches its recorded SHA-256. Refusing to include "
+                        f"possibly-tampered content in the report."
+                    )
                 image_path, image_size = _resolve_image(evidence)
                 compiled_section.items.append(
                     CompiledItem(

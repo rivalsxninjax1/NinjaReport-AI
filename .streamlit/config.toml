@@ -1,0 +1,12 @@
+# NinjaReport AI must never be exposed beyond the local machine.
+# This file is checked into git deliberately, unlike .env, so the
+# local-only binding survives even a careless deployment attempt.
+
+[server]
+address = "127.0.0.1"
+headless = true
+enableCORS = false
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false
