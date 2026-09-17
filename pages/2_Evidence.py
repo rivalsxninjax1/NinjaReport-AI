@@ -1,14 +1,12 @@
 """Evidence page: upload, browse (paginated + filtered), and review evidence."""
 from __future__ import annotations
 
-from pathlib import Path
-
 import streamlit as st
 
 from core.models import VerificationStatus
 from core.search import search_evidence
 from processors.pipeline import process_evidence
-from ui.common import get_stores, project_selector, save_uploaded_bytes
+from ui.common import get_stores, project_selector, resolve_display_image, save_uploaded_bytes
 from ui.style import apply_theme
 
 st.set_page_config(page_title="Evidence — NinjaReport AI", layout="wide")
@@ -31,7 +29,9 @@ with st.expander("Upload evidence", expanded=False):
     )
     evidence_type = st.selectbox("Evidence type", ["screenshot", "pdf", "note", "other"])
     if uploaded and st.button("Add to project"):
-        for f in uploaded:
+        progress = st.progress(0.0, text="Starting...")
+        for i, f in enumerate(uploaded):
+            progress.progress((i) / len(uploaded), text=f"Processing {f.name} ({i + 1}/{len(uploaded)})")
             scratch_dir = stores.settings.data_dir / "uploads_scratch"
             saved_path = save_uploaded_bytes(f.getvalue(), f.name, scratch_dir)
             try:
@@ -45,6 +45,7 @@ with st.expander("Upload evidence", expanded=False):
                 st.error(f"{f.name}: {exc}")
             finally:
                 saved_path.unlink(missing_ok=True)
+        progress.progress(1.0, text="Done.")
         st.rerun()
 
 # ---------- Filters ----------
@@ -70,11 +71,10 @@ st.caption(f"{len(results)} item(s) — page {page + 1} of {total_pages}")
 
 for evidence in page_items:
     with st.expander(f"{evidence.id} — {evidence.original_filename} ({evidence.verification_status})"):
-        stored_path = Path(evidence.stored_path)
-        if (evidence.mime_type or "").startswith("image/") and stored_path.exists():
-            st.image(str(stored_path), width=400)
+        display_image = resolve_display_image(evidence, stores.derived_store)
+        if display_image is not None:
+            st.image(str(display_image), width=400)
 
-        artifacts = stores.derived_store.list_artifacts(project.id, evidence.id)
         ocr_text = stores.derived_store.get_combined_text(project.id, evidence.id)
         if ocr_text:
             st.text_area("Extracted text (OCR/PDF, unverified)", ocr_text, height=100, disabled=True)

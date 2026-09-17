@@ -3,6 +3,12 @@ based on its MIME type, and records results as derived artifacts.
 
 Never reads evidence.stored_path for anything other than input — no
 processor here writes back to that path.
+
+Idempotent by default: if derived artifacts already exist for this
+evidence, processing is skipped (avoids re-running OCR/preview generation
+on every reprocess pass — the single biggest avoidable cost measured in
+scripts/benchmark_pipeline.py). Pass force=True to reprocess anyway (e.g.
+after changing OCR settings).
 """
 from __future__ import annotations
 
@@ -15,7 +21,17 @@ from processors.ocr_engine import run_ocr_on_image
 from processors.pdf_processor import process_pdf
 
 
-def process_evidence(evidence: Evidence, derived_root: Path, derived_store: DerivedStore) -> None:
+def process_evidence(
+    evidence: Evidence, derived_root: Path, derived_store: DerivedStore, force: bool = False,
+) -> bool:
+    """Returns True if processing actually ran, False if skipped because
+    derived artifacts already existed (and force=False)."""
+    existing = derived_store.list_artifacts(evidence.project_id, evidence.id)
+    if existing and not force:
+        return False
+    if existing and force:
+        derived_store.delete_artifacts(evidence.project_id, evidence.id)
+
     source = Path(evidence.stored_path)
     mime = evidence.mime_type or ""
 
@@ -24,6 +40,7 @@ def process_evidence(evidence: Evidence, derived_root: Path, derived_store: Deri
     elif mime == "application/pdf":
         _process_pdf(evidence, source, derived_store)
     # Notes and other types: nothing to derive in Phase 2.
+    return True
 
 
 def _process_image(evidence: Evidence, source: Path, derived_root: Path, derived_store: DerivedStore) -> None:

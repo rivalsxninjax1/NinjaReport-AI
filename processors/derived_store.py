@@ -70,6 +70,14 @@ class DerivedStore:
         ).fetchall()
         return [DerivedArtifact(**dict(r)) for r in rows]
 
+    def delete_artifacts(self, project_id: str, evidence_id: str) -> None:
+        """Remove all derived artifacts for this evidence — used before a
+        forced reprocess so old rows don't accumulate alongside new ones."""
+        self.conn.execute(
+            "DELETE FROM derived_artifacts WHERE project_id = ? AND evidence_id = ?",
+            (project_id, evidence_id),
+        )
+
     def get_combined_text(self, project_id: str, evidence_id: str) -> str | None:
         """Concatenate all text-bearing artifacts (OCR + PDF page text) in
         page order, for use as a single searchable blob."""

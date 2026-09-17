@@ -117,3 +117,22 @@ def save_uploaded_bytes(data: bytes, suggested_name: str, tmp_dir: Path) -> Path
     dest = tmp_dir / f"upload_{uuid.uuid4().hex}_{sanitize_filename(suggested_name)}"
     dest.write_bytes(data)
     return dest
+
+
+def resolve_display_image(evidence, derived_store) -> Path | None:
+    """Return the cheapest available image to display for this evidence:
+    the generated preview (resized, small) if one exists, otherwise the
+    full-resolution original as a fallback. Never loads the original into
+    memory/browser when a smaller preview is already on disk — the point
+    of Phase 2's preview generation would otherwise go unused."""
+    artifacts = derived_store.list_artifacts(evidence.project_id, evidence.id)
+    preview = next((a for a in artifacts if a.artifact_type == "preview" and a.content_path), None)
+    if preview and Path(preview.content_path).exists():
+        return Path(preview.content_path)
+
+    if (evidence.mime_type or "").startswith("image/"):
+        original = Path(evidence.stored_path)
+        if original.exists():
+            return original
+
+    return None

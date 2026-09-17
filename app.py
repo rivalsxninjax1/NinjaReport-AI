@@ -8,11 +8,18 @@ from core.logging_setup import configure_logging
 
 
 def bootstrap():
-    """Load settings, ensure directories exist, configure logging. Kept
-    dependency-free (no streamlit import) so it's unit testable."""
+    """Load settings, ensure directories exist, configure logging, and
+    clean up any orphaned scratch files from a previous crashed/interrupted
+    run. Kept dependency-free (no streamlit import) so it's unit testable."""
     settings = get_settings()
     settings.ensure_directories()
     logger = configure_logging(settings.data_dir)
+
+    from core.cleanup import clean_scratch_dir
+    removed = clean_scratch_dir(settings.data_dir / "uploads_scratch")
+    if removed:
+        logger.info("Cleaned up %d orphaned scratch file(s) from a previous run.", removed)
+
     logger.info("NinjaReport AI starting up. data_dir=%s", settings.data_dir)
     return settings
 
