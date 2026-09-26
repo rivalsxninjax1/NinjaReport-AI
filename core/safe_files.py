@@ -50,6 +50,18 @@ def guess_mime_type(filename: str) -> str | None:
     return mime
 
 
+def infer_evidence_type(filename: str) -> str:
+    """Best-effort evidence_type guess from a filename's extension, shared
+    by the CLI, the Quick Report auto-ingest flow, and anywhere else that
+    needs a default without asking the user."""
+    suffix = Path(filename).suffix.lower()
+    if suffix in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}:
+        return "screenshot"
+    if suffix == ".pdf":
+        return "pdf"
+    return "note"
+
+
 def validate_upload(path: Path, original_filename: str, max_upload_mb: int) -> None:
     """Raise InvalidEvidenceError if the file fails any safety check.
 

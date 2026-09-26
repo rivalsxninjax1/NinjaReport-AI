@@ -59,3 +59,26 @@ class EvidenceAnalysis(BaseModel):
             if not (0 <= port <= 65535):
                 raise ValueError(f"Port {port} is outside the valid range 0-65535")
         return ports
+
+
+class FindingDraft(BaseModel):
+    """One AI-proposed finding, produced by synthesizing multiple
+    EvidenceAnalysis results. Mirrors the same hard rule as EvidenceAnalysis:
+    suggested_severity is advisory only — nothing here can become a
+    finding's effective `severity` without going through
+    FindingsStore.approve_severity(), a human action.
+    """
+    title: str = Field(..., min_length=1)
+    description: str = Field(..., min_length=1)
+    affected_asset: str = ""
+    technical_impact: str = ""
+    business_impact: str = ""
+    remediation: str = ""
+    suggested_severity: str = Field(..., min_length=1)
+    severity_rationale: str = ""
+    evidence_ids: list[str] = Field(default_factory=list)
+    uncertainties: list[str] = Field(default_factory=list)
+
+
+class FindingsSynthesis(BaseModel):
+    findings: list[FindingDraft] = Field(default_factory=list)
