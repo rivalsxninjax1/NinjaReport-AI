@@ -45,6 +45,12 @@ class EvidenceStore:
         )
         return Project(id=project_id, name=name, created_at=created_at, next_evidence_seq=1)
 
+    def rename_project(self, project_id: str, new_name: str) -> Project:
+        if not new_name.strip():
+            raise ValueError("Project name cannot be empty.")
+        self.conn.execute("UPDATE projects SET name = ? WHERE id = ?", (new_name.strip(), project_id))
+        return self.get_project(project_id)
+
     def get_project(self, project_id: str) -> Project | None:
         row = self.conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
         if row is None:
@@ -185,6 +191,77 @@ class EvidenceStore:
         if ev is None:
             raise ValueError("Unknown evidence")
         return sha256_file(Path(ev.stored_path)) == ev.sha256
+
+    def delete_evidence(self, project_id: str, evidence_id: str, derived_root: Path) -> None:
+        """Irreversibly delete one evidence item and everything that
+        exists only because of it: its stored file, its derived artifacts
+        (previews/OCR text/crops) and their files, crop suggestion rows,
+        relationships mentioning it, and report_items that placed it in a
+        report. Also strips this evidence_id out of any finding's or
+        attack-path node's evidence_ids list rather than leaving a dangling
+        reference — deleting evidence should never leave other records
+        silently broken.
+        """
+        evidence = self.get_evidence(project_id, evidence_id)
+        if evidence is None:
+            raise ValueError(f"Unknown evidence: {evidence_id}")
+
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            self.conn.execute(
+                "DELETE FROM report_items WHERE item_type = 'evidence' AND evidence_id = ?", (evidence_id,)
+            )
+            self.conn.execute(
+                "DELETE FROM relationships WHERE project_id = ? AND "
+                "((from_type = 'evidence' AND from_id = ?) OR (to_type = 'evidence' AND to_id = ?))",
+                (project_id, evidence_id, evidence_id),
+            )
+            self.conn.execute(
+                "DELETE FROM crop_suggestions WHERE project_id = ? AND evidence_id = ?",
+                (project_id, evidence_id),
+            )
+            self.conn.execute(
+                "DELETE FROM derived_artifacts WHERE project_id = ? AND evidence_id = ?",
+                (project_id, evidence_id),
+            )
+
+            for row in self.conn.execute(
+                "SELECT id, evidence_ids FROM findings WHERE project_id = ?", (project_id,)
+            ).fetchall():
+                ids = json.loads(row["evidence_ids"] or "[]")
+                if evidence_id in ids:
+                    ids.remove(evidence_id)
+                    self.conn.execute(
+                        "UPDATE findings SET evidence_ids = ? WHERE id = ?", (json.dumps(ids), row["id"])
+                    )
+
+            for row in self.conn.execute(
+                "SELECT id, evidence_ids FROM attack_path_nodes WHERE project_id = ?", (project_id,)
+            ).fetchall():
+                ids = json.loads(row["evidence_ids"] or "[]")
+                if evidence_id in ids:
+                    ids.remove(evidence_id)
+                    new_status = "verified" if ids else "unverified"
+                    self.conn.execute(
+                        "UPDATE attack_path_nodes SET evidence_ids = ?, status = ? WHERE id = ?",
+                        (json.dumps(ids), new_status, row["id"]),
+                    )
+
+            self.conn.execute(
+                "DELETE FROM evidence WHERE project_id = ? AND id = ?", (project_id, evidence_id)
+            )
+            self.conn.execute("COMMIT")
+        except Exception:
+            self.conn.execute("ROLLBACK")
+            raise
+
+        stored_path = Path(evidence.stored_path)
+        if stored_path.exists():
+            stored_path.chmod(0o644)
+            stored_path.unlink(missing_ok=True)
+
+        derived_dir = derived_root / project_id / evidence_id
+        shutil.rmtree(derived_dir, ignore_errors=True)
 
     @staticmethod
     def _row_to_evidence(row: sqlite3.Row) -> Evidence:

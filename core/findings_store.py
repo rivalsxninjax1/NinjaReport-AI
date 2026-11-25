@@ -128,6 +128,26 @@ class FindingsStore:
         self._touch(project_id, finding_id, "evidence_ids = ?", (json.dumps(evidence_ids),))
         return self.get_finding(project_id, finding_id)
 
+    def delete_finding(self, project_id: str, finding_id: str) -> None:
+        """Irreversibly delete a finding and any report_items that placed
+        it in a report plan — deleting a finding should never leave a
+        dangling reference a later report generation would choke on."""
+        if self.get_finding(project_id, finding_id) is None:
+            raise ValueError(f"Unknown finding: {finding_id}")
+
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            self.conn.execute(
+                "DELETE FROM report_items WHERE item_type = 'finding' AND finding_id = ?", (finding_id,)
+            )
+            self.conn.execute(
+                "DELETE FROM findings WHERE project_id = ? AND id = ?", (project_id, finding_id)
+            )
+            self.conn.execute("COMMIT")
+        except Exception:
+            self.conn.execute("ROLLBACK")
+            raise
+
     def _touch(self, project_id: str, finding_id: str, set_clause: str, params: tuple) -> None:
         now = datetime.now(UTC).isoformat()
         self.conn.execute(

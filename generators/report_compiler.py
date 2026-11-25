@@ -7,6 +7,7 @@ is written — a plan can drift (evidence deleted, etc.) after being built.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -30,6 +31,7 @@ class CompiledItem:
     evidence: Evidence | None = None
     finding: Finding | None = None
     text: str | None = None
+    text_excerpt: str | None = None  # start of a plain-text evidence file, shown inline
 
 
 @dataclass
@@ -88,6 +90,7 @@ def compile_report(
                         image_path=image_path,
                         image_size_px=image_size,
                         evidence=evidence,
+                        text_excerpt=_load_text_excerpt(evidence),
                     )
                 )
 
@@ -128,3 +131,44 @@ def _resolve_image(evidence: Evidence) -> tuple[Path | None, tuple[int, int] | N
         # Image present but unreadable for dimensions — still reference the
         # file; the generator falls back to a safe default size.
         return path, None
+
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+_CONTROL_RE = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\ud800-\udfff\ufffe\uffff]")
+MAX_TEXT_EXCERPT_CHARS = 4000
+
+
+def clean_text(text: str | None) -> str:
+    """Make pasted/AI/user text safe to put in a DOCX/PDF/Markdown report.
+
+    Terminal output often carries ANSI colour codes and other control
+    characters; python-docx raises ValueError on those, which would crash
+    report generation. Tabs and newlines are kept; CRLF is normalised.
+    """
+    if not text:
+        return ""
+    text = _ANSI_RE.sub("", text).replace("\r\n", "\n").replace("\r", "\n")
+    return _CONTROL_RE.sub("", text)
+
+
+def _load_text_excerpt(evidence: Evidence) -> str | None:
+    """For plain-text evidence (pasted notes, .txt uploads), return the start
+    of the file so reports can show it inline instead of just naming it."""
+    if (evidence.mime_type or "") != "text/plain":
+        return None
+    try:
+        text = Path(evidence.stored_path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    text = clean_text(text).strip()
+    if not text:
+        return None
+    if len(text) > MAX_TEXT_EXCERPT_CHARS:
+        text = text[:MAX_TEXT_EXCERPT_CHARS] + "\n[... truncated ...]"
+    return text
+
+
+def has_renderable_image(item: CompiledItem) -> bool:
+    """True only if this evidence item has an image file that exists on disk
+    (and therefore gets a figure number)."""
+    return item.image_path is not None and item.image_path.exists()

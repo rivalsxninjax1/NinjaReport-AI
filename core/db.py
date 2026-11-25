@@ -229,6 +229,10 @@ def get_connection(db_path: Path) -> sqlite3.Connection:
     # the standard, documented fix for Streamlit + sqlite3.
     conn = sqlite3.connect(db_path, isolation_level=None, check_same_thread=False)
     conn.execute("PRAGMA foreign_keys = ON;")
+    # Wait up to 5s for a competing writer instead of failing immediately
+    # with 'database is locked' (e.g. two browser tabs, or the CLI running
+    # while the UI is open).
+    conn.execute("PRAGMA busy_timeout = 5000;")
     conn.row_factory = sqlite3.Row
     return conn
 

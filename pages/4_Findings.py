@@ -1,8 +1,10 @@
-"""Findings page. The severity approval gate from Phase 6 is a real UI
-action here: 'Suggest severity (AI)' only ever writes the advisory
-ai_suggested_severity field; a separate 'Approve severity' button — which
-defaults to but does not require the AI's suggestion — is the only control
-that sets the finding's effective severity.
+"""Findings page.
+
+The severity approval gate from Phase 6 is a real UI action here:
+'Suggest severity (AI)' only ever writes the advisory ai_suggested_severity
+field; a separate 'Approve severity' button — which defaults to but does not
+require the AI's suggestion — is the only control that sets the finding's
+effective severity.
 """
 from __future__ import annotations
 
@@ -10,7 +12,8 @@ import streamlit as st
 
 from ai.provider import AIProviderError, OfflineModeError
 from core.findings_store import VALID_SEVERITIES
-from ui.common import get_stores, project_selector
+from core.models import FindingStatus
+from ui.common import destructive_button, flash, get_stores, project_selector, show_flash
 from ui.style import apply_theme, severity_badge
 
 st.set_page_config(page_title="Findings — NinjaReport AI", layout="wide")
@@ -19,6 +22,7 @@ stores = get_stores()
 project = project_selector(stores)
 
 st.title("Findings")
+show_flash()
 
 if project is None:
     st.info("Create a project first.")
@@ -38,20 +42,40 @@ with st.expander("New finding"):
             description=description, evidence_ids=evidence_ids,
             evidence_store=stores.evidence_store,
         )
+        flash("success", "Finding created.")
         st.rerun()
 
 findings = stores.findings_store.list_findings(project.id)
 if not findings:
-    st.info("No findings yet.")
+    st.info("No findings yet. Create one above, or generate a Quick Report from the home page to have them drafted.")
     st.stop()
+
+view = st.radio("Show", ["All", "Awaiting severity approval", "Approved"], horizontal=True)
+if view == "Awaiting severity approval":
+    findings = [f for f in findings if f.severity is None]
+elif view == "Approved":
+    findings = [f for f in findings if f.severity is not None]
+if not findings:
+    st.success("Nothing in this view.")
+
+status_options = [s.value for s in FindingStatus]
+severity_options = sorted(VALID_SEVERITIES)
 
 for finding in findings:
     with st.container(border=True):
         st.markdown(f"### {finding.id} — {finding.title}")
         st.markdown(f"Severity: {severity_badge(finding.severity)}", unsafe_allow_html=True)
-        st.caption(f"Status: {finding.status} · Affected: {finding.affected_asset or 'unspecified'}")
+        st.caption(f"Affected: {finding.affected_asset or 'unspecified'}")
         if finding.description:
             st.write(finding.description)
+
+        current_status = finding.status if finding.status in status_options else status_options[0]
+        new_status = st.selectbox(
+            "Status", status_options, index=status_options.index(current_status), key=f"status_{finding.id}",
+        )
+        if new_status != finding.status:
+            stores.findings_store.update_status(project.id, finding.id, new_status)
+            st.rerun()
 
         col1, col2 = st.columns(2)
 
@@ -85,7 +109,6 @@ for finding in findings:
 
         with col2:
             st.markdown("**Human approval (required to take effect)**")
-            severity_options = sorted(VALID_SEVERITIES)
             default_index = (
                 severity_options.index(finding.ai_suggested_severity)
                 if finding.ai_suggested_severity in severity_options else 0
@@ -103,4 +126,10 @@ for finding in findings:
         )
         if st.button("Save CVSS vector", key=f"save_cvss_{finding.id}") and cvss != (finding.cvss_vector or ""):
             stores.findings_store.set_cvss_vector(project.id, finding.id, cvss)
+            st.rerun()
+
+        st.divider()
+        if destructive_button("Delete this finding", key=f"delete_{finding.id}"):
+            stores.findings_store.delete_finding(project.id, finding.id)
+            flash("success", f"Deleted {finding.id}. It was also removed from any report plan.")
             st.rerun()

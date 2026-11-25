@@ -136,3 +136,55 @@ def resolve_display_image(evidence, derived_store) -> Path | None:
             return original
 
     return None
+
+
+
+def flash(kind: str, message: str) -> None:
+    """Queue a message to show on the next page render. It survives
+    st.rerun(), which would otherwise wipe an st.success() shown just before
+    it. kind: 'success' | 'info' | 'warning' | 'error'."""
+    import streamlit as st
+
+    st.session_state["_flash"] = (kind, message)
+
+
+def show_flash() -> None:
+    """Display (and clear) any queued flash message. Call near the top of every page."""
+    import streamlit as st
+
+    item = st.session_state.pop("_flash", None)
+    if item:
+        kind, message = item
+        getattr(st, kind, st.info)(message)
+
+
+def destructive_button(
+    label: str,
+    key: str,
+    confirm_text: str = "Yes, permanently delete",
+    warning: str = "This cannot be undone.",
+) -> bool:
+    """Two-step confirmation for irreversible actions.
+
+    The first click only arms the action and shows Yes/Cancel; the function
+    returns True exactly once, on the explicit second click. A single
+    misclick can never destroy data.
+    """
+    import streamlit as st
+
+    pending_key = f"_confirm_pending_{key}"
+    if not st.session_state.get(pending_key):
+        if st.button(label, key=key):
+            st.session_state[pending_key] = True
+            st.rerun()
+        return False
+
+    st.warning(warning)
+    col_yes, col_cancel = st.columns(2)
+    if col_cancel.button("Cancel", key=f"{key}_cancel"):
+        st.session_state[pending_key] = False
+        st.rerun()
+    if col_yes.button(confirm_text, key=f"{key}_confirm", type="primary"):
+        st.session_state[pending_key] = False
+        return True
+    return False

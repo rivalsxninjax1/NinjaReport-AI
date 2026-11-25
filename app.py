@@ -56,6 +56,16 @@ def main() -> None:
     st.title("NinjaReport AI")
     st.caption("Paste anything, drop your files, get a report.")
 
+    with st.expander("How this works", expanded=False):
+        st.markdown(
+            "1. **Paste text and/or drop files** — screenshots, PDFs, command output, notes. No need to label them.\n"
+            "2. **Pick a report type and format**, then click **Generate Report**.\n"
+            "3. NinjaReport AI reads everything (OCR for images), asks your local AI model to analyze it, "
+            "drafts findings and narrative sections, and builds the report.\n"
+            "4. **Review before you trust it.** AI-drafted severities stay marked *not yet approved* until you "
+            "approve them on the Findings page. Everything stays on this computer."
+        )
+
     sidebar_project = project_selector(stores)
 
     diagnostics = run_diagnostics(
@@ -83,6 +93,7 @@ def main() -> None:
         "Or drop files — screenshots, PDFs, text files",
         type=["png", "jpg", "jpeg", "pdf", "txt"],
         accept_multiple_files=True,
+        help=f"Max {stores.settings.max_upload_mb} MB per file. Executable and script files are always rejected for safety.",
     )
 
     col1, col2, col3 = st.columns(3)
